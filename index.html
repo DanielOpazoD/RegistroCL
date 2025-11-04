@@ -159,9 +159,8 @@
       measurementId: "G-CBRFNCM5E4"
     };
 
-    // Import Firebase
-    const { initializeApp } = window;
-    const app = firebase.initializeApp(firebaseConfig);
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const storage = firebase.storage();
 
