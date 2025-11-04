@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro Clínico – Hospital Hanga Roa</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js"></script>
+  <style>
+    :root{ --gap-y:4px; --fs:13px; }
+    body{ font-family:Arial,sans-serif; font-size:var(--fs); color:#1f2937; background:#f5f5f5; margin:0; }
+    .topbar{ position:sticky; top:0; z-index:10000; background:#1f2937; color:#fff; padding:10px 12px; display:flex; gap:8px; align-items:center; justify-content:space-between; box-shadow:0 2px 4px rgba(0,0,0,0.1); flex-wrap:wrap; }
+    .topbar-group{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .topbar select{ background:#374151; color:#fff; border:1px solid #4b5563; border-radius:4px; padding:6px 8px; font-size:var(--fs); cursor:pointer; }
+    .topbar select:hover{ background:#4b5563; }
+    .topbar select option{ background:#1f2937; color:#fff; }
+    .btn{ display:inline-flex; align-items:center; gap:4px; background:#374151; color:#fff; border:1px solid #4b5563; border-radius:4px; padding:6px 10px; cursor:pointer; font-size:var(--fs); font-weight:600; transition:background 0.2s; }
+    .btn:hover{ background:#4b5563; }
+    .btn-primary{ background:#1e40af; border-color:#1e40af; }
+    .btn-primary:hover{ background:#1b3796; }
+    .btn-success{ background:#10b981; border-color:#10b981; }
+    .btn-success:hover{ background:#059669; }
+    .wrap{ padding:8px 12px; }
+    .sheet{ position:relative; max-width:900px; margin:0 auto; background:#fff; border:1px solid #e5e7eb; border-radius:4px; padding:8px 10px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .lbl{ font-weight:600; color:#1f2937; margin-bottom:1px; font-size:11px; display:block; }
+    .inp,.txt{ width:100%; border:1px solid #d1d5db; border-radius:3px; padding:4px 6px; line-height:1.25; font-family:inherit; font-size:var(--fs); transition:all 0.2s ease; }
+    .inp:focus,.txt:focus{ outline:none; border-color:#1e40af; background:#f0f9ff; box-shadow:inset 0 0 0 1px rgba(30,64,175,0.2); }
+    .inp[readonly]{ cursor:default; color:#6b7280; border-color:#e5e7eb; }
+    .txt{ min-height:60px; resize:vertical; }
+    .sec{ margin-top:6px; position:relative; }
+    .title{ font-weight:800; color:#1f2937; text-align:center; margin:0 0 6px 0; font-size:14px; }
+    .subtitle{ font-weight:700; color:#1f2937; margin:4px 0 3px 0; font-size:12px; }
+    .edit-panel{ position:fixed; right:12px; top:54px; z-index:9999; display:none; background:#fff; border:1px solid #d1d5db; border-radius:4px; padding:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); flex-direction:column; gap:6px; min-width:180px; }
+    .sec-del{ position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:3px; border:none; background:#ef4444; color:#fff; font-weight:700; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.2); display:none; }
+    .sec-del:hover{ background:#dc2626; }
+    .edit-mode .sec-del{ display:flex; align-items:center; justify-content:center; }
+    .auth-container{ position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:5000; }
+    .auth-box{ background:#fff; padding:30px; border-radius:8px; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.2); }
+    .auth-box h2{ margin:0 0 20px 0; color:#1f2937; }
+    .modal{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:20px; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.2); z-index:6000; display:none; max-height:80vh; overflow-y:auto; }
+    .modal-overlay{ position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:none; z-index:5999; }
+    .modal.show{ display:block; }
+    .modal-overlay.show{ display:block; }
+    @media print{
+      .topbar,.edit-panel{ display:none!important; }
+      html,body{ height:auto!important; overflow:visible!important; }
+      .sheet{ border:none; border-radius:0; padding:14mm; max-width:unset; overflow:visible!important; }
+      .txt{ min-height:70px; overflow:visible!important; }
+      *::-webkit-scrollbar{ display:none!important; }
+      @page{ margin:14mm; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Auth Container -->
+  <div id="authContainer" class="auth-container">
+    <div class="auth-box">
+      <h2>Registro Clínico</h2>
+      <p>Inicia sesión con tu cuenta de Google</p>
+      <button id="googleLoginBtn" class="btn btn-primary" style="padding:10px 20px; font-size:14px; width:100%;">
+        Iniciar sesión con Google
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal para guardar archivos -->
+  <div id="saveModal" class="modal">
+    <h3>Guardar registro</h3>
+    <div style="margin:15px 0;">
+      <label class="lbl">Nombre del archivo:</label>
+      <input id="fileName" class="inp" placeholder="ej: Informe_Paciente_2024">
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button id="cancelSaveBtn" class="btn">Cancelar</button>
+      <button id="confirmSaveBtn" class="btn btn-success">Guardar</button>
+    </div>
+  </div>
+  <div id="modalOverlay" class="modal-overlay"></div>
+
+  <!-- Main App (Oculto hasta login) -->
+  <div id="mainApp" style="display:none;">
+    <div class="topbar">
+      <div class="topbar-group">
+        <select id="titleSelect" style="flex:0 1 300px;">
+          <option value="1">Informe médico de traslado - Hospital Hanga Roa</option>
+          <option value="2" selected>Evolución médica (FECHA) - Hospital Hanga Roa</option>
+          <option value="3">Epicrisis médica</option>
+          <option value="4">Epicrisis médica de traslado</option>
+          <option value="5">Otro (personalizado)</option>
+          <option value="6">Informe médico - Hospital Hanga Roa</option>
+        </select>
+      </div>
+      <div class="topbar-group">
+        <button id="btnPrint" class="btn btn-primary" type="button">Imprimir PDF</button>
+        <button id="toggleEdit" class="btn" type="button">Editar</button>
+        <button id="saveCloudBtn" class="btn btn-success" type="button">Guardar en nube</button>
+        <button id="loadCloudBtn" class="btn" type="button">Mis archivos</button>
+        <button id="logoutBtn" class="btn" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="sheet" id="sheet">
+        <img id="logoLeft" src="https://iili.io/FEirDCl.png" class="absolute top-2 left-2 w-12 h-auto opacity-60">
+        <img id="logoRight" src="https://iili.io/FEirQjf.png" class="absolute top-2 right-2 w-12 h-auto opacity-60">
+
+        <div id="editPanel" class="edit-panel">
+          <div>Edición</div>
+          <button id="addSecBtn" class="btn" type="button">Agregar sección</button>
+          <button id="delSecBtn" class="btn" type="button">Eliminar sección</button>
+          <hr style="margin:6px 0; border:none; border-top:1px solid #d1d5db;">
+          <button id="restoreBtn" class="btn" type="button">Restaurar todo</button>
+        </div>
+
+        <div id="titleDisplay" class="title" contenteditable="true">Evolución médica (____) - Hospital Hanga Roa</div>
+
+        <div class="sec" id="sec-datos">
+          <div class="subtitle" contenteditable="true">Información del Paciente</div>
+          <div id="patientGrid">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8px;">
+              <div><div class="lbl">Nombre</div><input class="inp" id="nombre" placeholder="Nombre Apellido"></div>
+              <div><div class="lbl">Rut</div><input class="inp" id="rut"></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8px;">
+              <div><div class="lbl">Fecha de nacimiento</div><input type="date" class="inp" id="fecnac"></div>
+              <div><div class="lbl">Edad</div><input class="inp" id="edad" placeholder="años" readonly style="background:#f9f9f9;"></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div><div class="lbl">Fecha de ingreso</div><input type="date" class="inp" id="fing"></div>
+              <div><div class="lbl">Fecha del informe</div><input type="date" class="inp" id="finf"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="sectionsContainer"></div>
+
+        <div class="sec" style="margin-top:4px;">
+          <div class="grid-2">
+            <div><div class="lbl">Médico</div><input class="inp" id="medico"></div>
+            <div><div class="lbl">Especialidad</div><input class="inp" id="esp"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyCHuSyNDJuwQsKrLCth0RisgAwduDQlrCw",
+      authDomain: "registroscl-70753.firebaseapp.com",
+      projectId: "registroscl-70753",
+      storageBucket: "registroscl-70753.firebasestorage.app",
+      messagingSenderId: "805682781633",
+      appId: "1:805682781633:web:2b5e54090325b4faade340",
+      measurementId: "G-CBRFNCM5E4"
+    };
+
+    // Import Firebase
+    const { initializeApp } = window;
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const storage = firebase.storage();
+
+    // DOM Elements
+    const authContainer = document.getElementById('authContainer');
+    const mainApp = document.getElementById('mainApp');
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const saveCloudBtn = document.getElementById('saveCloudBtn');
+    const loadCloudBtn = document.getElementById('loadCloudBtn');
+    const saveModal = document.getElementById('saveModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const cancelSaveBtn = document.getElementById('cancelSaveBtn');
+    const confirmSaveBtn = document.getElementById('confirmSaveBtn');
+    const fileNameInput = document.getElementById('fileName');
+
+    // Auth Listeners
+    auth.onAuthStateChanged(function(user) {
+      if (user) {
+        authContainer.style.display = 'none';
+        mainApp.style.display = 'block';
+        init();
+      } else {
+        authContainer.style.display = 'flex';
+        mainApp.style.display = 'none';
+      }
+    });
+
+    // Google Login
+    googleLoginBtn.addEventListener('click', function() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(err => alert('Error: ' + err.message));
+    });
+
+    // Logout
+    logoutBtn.addEventListener('click', function() {
+      auth.signOut().catch(err => alert('Error: ' + err.message));
+    });
+
+    // Save to Cloud
+    saveCloudBtn.addEventListener('click', function() {
+      saveModal.classList.add('show');
+      modalOverlay.classList.add('show');
+    });
+
+    cancelSaveBtn.addEventListener('click', function() {
+      saveModal.classList.remove('show');
+      modalOverlay.classList.remove('show');
+      fileNameInput.value = '';
+    });
+
+    confirmSaveBtn.addEventListener('click', async function() {
+      const fileName = fileNameInput.value.trim();
+      if (!fileName) { alert('Ingresa un nombre'); return; }
+      
+      const user = auth.currentUser;
+      const data = getModel();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const timestamp = new Date().toLocaleString('es-ES');
+      
+      try {
+        await storage.ref(`registros/${user.uid}/${fileName}.json`).putString(jsonStr);
+        alert('Archivo guardado en la nube ✓');
+        saveModal.classList.remove('show');
+        modalOverlay.classList.remove('show');
+        fileNameInput.value = '';
+      } catch (err) {
+        alert('Error al guardar: ' + err.message);
+      }
+    });
+
+    // Load from Cloud
+    loadCloudBtn.addEventListener('click', async function() {
+      const user = auth.currentUser;
+      try {
+        const files = await storage.ref(`registros/${user.uid}`).listAll();
+        let listHTML = '<h3>Mis archivos guardados</h3><div style="max-height:400px; overflow-y:auto;">';
+        
+        for (const item of files.items) {
+          const url = await item.getDownloadURL();
+          const name = item.name.replace('.json', '');
+          listHTML += `<div style="padding:8px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+            <span>${name}</span>
+            <button onclick="loadFileFromCloud('${url}')" class="btn" style="padding:4px 8px; font-size:11px;">Cargar</button>
+          </div>`;
+        }
+        listHTML += '</div>';
+        
+        saveModal.innerHTML = listHTML;
+        saveModal.classList.add('show');
+        modalOverlay.classList.add('show');
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    });
+
+    window.loadFileFromCloud = async function(url) {
+      try {
+        const response = await fetch(url);
+        const model = await response.json();
+        setModel(model);
+        saveModal.classList.remove('show');
+        modalOverlay.classList.remove('show');
+        alert('Archivo cargado ✓');
+      } catch (err) {
+        alert('Error al cargar: ' + err.message);
+      }
+    };
+
+    // Core Functions (same as before)
+    const select = document.getElementById('titleSelect');
+    const titleDisplay = document.getElementById('titleDisplay');
+    const sheet = document.getElementById('sheet');
+    const container = document.getElementById('sectionsContainer');
+    const toggleEdit = document.getElementById('toggleEdit');
+    const editPanel = document.getElementById('editPanel');
+    const addSecBtn = document.getElementById('addSecBtn');
+    const delSecBtn = document.getElementById('delSecBtn');
+    const restoreBtn = document.getElementById('restoreBtn');
+    const btnPrint = document.getElementById('btnPrint');
+
+    function getInput(id) { return document.getElementById(id); }
+    function currentReportDate() { return getInput('finf') ? getInput('finf').value : ''; }
+    function parseYMD(str) { const[y,m,d]=str.split('-').map(x=>parseInt(x,10));return{y,m,d}; }
+    function formatDMY(dd,mm,yy) { const d=String(dd).padStart(2,'0');const m=String(mm).padStart(2,'0');const y2=String(yy).slice(-2);return`${d}/${m}/${y2}`; }
+    function formatDateDMY(str) { if(!str||!/\d{4}-\d{2}-\d{2}/.test(str))return'____';const{y,m,d}=parseYMD(str);return formatDMY(d,m,y); }
+    function calcEdadY(birthStr,refStr) { if(!birthStr||!/\d{4}-\d{2}-\d{2}/.test(birthStr))return'';let refY,refM,refD;if(refStr&&/\d{4}-\d{2}-\d{2}/.test(refStr)){({y:refY,m:refM,d:refD}=parseYMD(refStr));}else{const now=new Date();refY=now.getFullYear();refM=now.getMonth()+1;refD=now.getDate();}const{y:by,m:bm,d:bd}=parseYMD(birthStr);let age=refY-by;if(refM<bm||(refM===bm&&refD<bd))age--;return String(Math.max(age,0)); }
+    function setTitleFromSelect() { const opt=select.value;if(opt==='1')titleDisplay.innerText='Informe médico de traslado - Hospital Hanga Roa';if(opt==='2'){const fecha=formatDateDMY(currentReportDate());titleDisplay.innerText=`Evolución médica (${fecha}) - Hospital Hanga Roa`;}if(opt==='3')titleDisplay.innerText='Epicrisis médica';if(opt==='4')titleDisplay.innerText='Epicrisis médica de traslado';if(opt==='5')titleDisplay.innerText='';if(opt==='6')titleDisplay.innerText='Informe médico - Hospital Hanga Roa'; }
+    function updateAgeFromInputs() { const birth=getInput('fecnac');const ageInput=getInput('edad');if(!birth||!ageInput)return;const age=calcEdadY(birth.value,currentReportDate());ageInput.value=age; }
+    function bindDeleteButtons(scope=document) { scope.querySelectorAll('.sec[data-section] .sec-del').forEach(btn=>{ btn.onclick=(e)=>{ e.preventDefault();btn.closest('.sec').remove();};}); }
+    function addSection() { const sec=document.createElement('div');sec.className='sec';sec.setAttribute('data-section','');sec.innerHTML=`<button class="sec-del">×</button><div class="subtitle" contenteditable="true">Sección personalizada</div><textarea class="txt"></textarea>`;container.appendChild(sec);bindDeleteButtons(sec);sec.scrollIntoView({behavior:'smooth',block:'start'}); }
+    function removeSection() { const secs=container.querySelectorAll('.sec[data-section]');if(secs.length){secs[secs.length-1].remove();} }
+    function setSectionsHTML(html) { container.innerHTML=html;bindDeleteButtons(container); }
+    function restoreClinicalSections() { setSectionsHTML(`<div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Antecedentes</div><textarea class="txt"></textarea></div><div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Historia y evolución clínica</div><textarea class="txt"></textarea></div><div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Exámenes complementarios</div><textarea class="txt"></textarea></div><div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Diagnósticos</div><textarea class="txt"></textarea></div><div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Plan</div><textarea class="txt"></textarea></div>`); }
+    function restoreDefault() { restoreClinicalSections();document.querySelectorAll('.txt').forEach(t=>t.value='');document.querySelectorAll('.inp').forEach(i=>{if(i.type!=='date'&&i.type!=='number'&&i.id!=='')i.value='';}); select.value='2';setTitleFromSelect();updateAgeFromInputs(); }
+    function setEditMode(on) { sheet.classList.toggle('edit-mode',on);editPanel.style.display=on?'flex':'none'; }
+    function closeEditMode() { setEditMode(false); }
+    function isEditActionTarget(target) { return editPanel.contains(target)||target.closest('#toggleEdit')||target.closest('.sec-del'); }
+
+    select.addEventListener('change',()=>{ setTitleFromSelect();if(select.value==='6'){setSectionsHTML(`<div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true">Antecedentes</div><textarea class="txt"></textarea></div><div class="sec" data-section><button class="sec-del">×</button><div class="subtitle" contenteditable="true"></div><textarea class="txt"></textarea></div>`);}else if(select.value==='2'){restoreClinicalSections();} });
+    document.addEventListener('input',(ev)=>{ const target=ev.target;if(target?.id==='finf'){if(select.value==='2')setTitleFromSelect();updateAgeFromInputs();}if(target?.id==='fecnac'){updateAgeFromInputs();} },true);
+    toggleEdit.addEventListener('click',()=>{ const on=!sheet.classList.contains('edit-mode');setEditMode(on); });
+    document.addEventListener('pointerdown',(ev)=>{ const target=ev.target;if(!sheet.classList.contains('edit-mode'))return;if(!target)return;if(isEditActionTarget(target))return;closeEditMode(); });
+    addSecBtn.addEventListener('click',addSection);
+    delSecBtn.addEventListener('click',removeSection);
+    restoreBtn.addEventListener('click',restoreDefault);
+
+    function stripAccents(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+    function baseNameFromSelect() { switch(select.value){case '1':return'Informe medico';case '2':return'Evolucion medica';case '3':return'Epicrisis';case '4':return'Epicrisis traslado';case '5':return'Registro Clinico';case '6':return'Informe medico';default:return'Registro Clinico';} }
+    function patientNameForFile() { const full=(document.getElementById('nombre')?document.getElementById('nombre').value:'').trim();if(!full)return'';const parts=full.split(/\s+/);return parts.slice(0,2).join(' '); }
+    function todayDMY() { const now=new Date();const dd=String(now.getDate()).padStart(2,'0');const mm=String(now.getMonth()+1).padStart(2,'0');const yy=String(now.getFullYear()).slice(-2);return`${dd}-${mm}-${yy}`; }
+    function suggestedFilename() { const base=baseNameFromSelect();const name=patientNameForFile();const date=todayDMY();const parts=[base,name,date].filter(Boolean).join(' - ');return stripAccents(parts).replace(/[^A-Za-z0-9 _\-]/g,''); }
+
+    if(btnPrint) { btnPrint.addEventListener('click',function() { const oldTitle=document.title;const newTitle=suggestedFilename()||oldTitle;document.title=newTitle;window.print();setTimeout(function(){document.title=oldTitle;},1200); }); }
+
+    function getModel() { const sections=Array.from(document.querySelectorAll('#sectionsContainer>.sec')).map(sec=>({title:(sec.querySelector('.subtitle')?sec.querySelector('.subtitle').innerText:'').trim(),content:(sec.querySelector('textarea')?sec.querySelector('textarea').value:'')}));return{version:'v16',template:select.value,title:document.getElementById('titleDisplay').innerText.trim(),medico:document.getElementById('medico').value||'',especialidad:document.getElementById('esp').value||'',sections}; }
+    function setModel(model) { if(model.template){select.value=String(model.template);setTitleFromSelect();}if(typeof model.title==='string')document.getElementById('titleDisplay').innerText=model.title;if(Array.isArray(model.sections)){container.innerHTML='';model.sections.forEach(s=>{const sec=document.createElement('div');sec.className='sec';sec.setAttribute('data-section','');sec.innerHTML=`<button class="sec-del">×</button><div class="subtitle" contenteditable="true">${s.title||''}</div><textarea class="txt">${(s.content||'').replace(/</g,'&lt;')}</textarea>`;container.appendChild(sec);});bindDeleteButtons(container);}document.getElementById('medico').value=model.medico||'';document.getElementById('esp').value=model.especialidad||''; }
+
+    function init() { restoreClinicalSections();setTitleFromSelect();bindDeleteButtons();updateAgeFromInputs(); }
+  </script>
+</body>
+</html>
