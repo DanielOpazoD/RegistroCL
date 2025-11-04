@@ -40,7 +40,7 @@
     .auth-container{ position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:5000; }
     .auth-box{ background:#fff; padding:30px; border-radius:8px; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.2); }
     .auth-box h2{ margin:0 0 20px 0; color:#1f2937; }
-    .modal{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:20px; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.2); z-index:6000; display:none; max-height:80vh; overflow-y:auto; }
+    .modal{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:20px; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.2); z-index:6000; display:none; max-height:80vh; overflow-y:auto; min-width:300px; }
     .modal-overlay{ position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:none; z-index:5999; }
     .modal.show{ display:block; }
     .modal-overlay.show{ display:block; }
@@ -59,10 +59,12 @@
   <div id="authContainer" class="auth-container">
     <div class="auth-box">
       <h2>Registro Clínico</h2>
-      <p>Inicia sesión con tu cuenta de Google</p>
-      <button id="googleLoginBtn" class="btn btn-primary" style="padding:10px 20px; font-size:14px; width:100%;">
-        Iniciar sesión con Google
+      <p>Inicia sesión para continuar</p>
+      <input id="emailInput" type="email" class="inp" placeholder="tu@email.com" style="margin-bottom:10px;">
+      <button id="loginBtn" class="btn btn-primary" style="padding:10px 20px; font-size:14px; width:100%;">
+        Iniciar sesión
       </button>
+      <p style="margin-top:15px; font-size:12px; color:#6b7280;">*Usa cualquier correo (demo)</p>
     </div>
   </div>
 
@@ -148,27 +150,77 @@
   </div>
 
   <script>
-    // Firebase Config
+    // ====== FIREBASE CONFIG ======
     const firebaseConfig = {
       apiKey: "AIzaSyCHuSyNDJuwQsKrLCth0RisgAwduDQlrCw",
       authDomain: "registroscl-70753.firebaseapp.com",
       projectId: "registroscl-70753",
       storageBucket: "registroscl-70753.firebasestorage.app",
       messagingSenderId: "805682781633",
-      appId: "1:805682781633:web:2b5e54090325b4faade340",
-      measurementId: "G-CBRFNCM5E4"
+      appId: "1:805682781633:web:2b5e54090325b4faade340"
     };
 
     // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
+    const app = firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const storage = firebase.storage();
 
-    // DOM Elements
+    // ====== AUTH ======
     const authContainer = document.getElementById('authContainer');
     const mainApp = document.getElementById('mainApp');
-    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    const emailInput = document.getElementById('emailInput');
+    const loginBtn = document.getElementById('loginBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+
+    loginBtn.addEventListener('click', function() {
+      const email = emailInput.value.trim();
+      if (!email) { alert('Ingresa un email'); return; }
+      
+      const password = "123456"; // Password fijo para demo
+      
+      auth.signInWithEmailAndPassword(email, password)
+        .catch(err => {
+          // Si no existe, crear cuenta
+          if (err.code === 'auth/user-not-found') {
+            auth.createUserWithEmailAndPassword(email, password)
+              .then(() => {
+                authContainer.style.display = 'none';
+                mainApp.style.display = 'block';
+                init();
+              })
+              .catch(e => alert('Error: ' + e.message));
+          }
+        })
+        .then(() => {
+          if (auth.currentUser) {
+            authContainer.style.display = 'none';
+            mainApp.style.display = 'block';
+            init();
+          }
+        });
+    });
+
+    logoutBtn.addEventListener('click', function() {
+      auth.signOut().then(() => {
+        authContainer.style.display = 'flex';
+        mainApp.style.display = 'none';
+        emailInput.value = '';
+      });
+    });
+
+    // Check login state
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        authContainer.style.display = 'none';
+        mainApp.style.display = 'block';
+        emailInput.value = user.email;
+      } else {
+        authContainer.style.display = 'flex';
+        mainApp.style.display = 'none';
+      }
+    });
+
+    // ====== SAVE / DOWNLOAD ======
     const saveCloudBtn = document.getElementById('saveCloudBtn');
     const loadCloudBtn = document.getElementById('loadCloudBtn');
     const saveModal = document.getElementById('saveModal');
@@ -177,30 +229,6 @@
     const confirmSaveBtn = document.getElementById('confirmSaveBtn');
     const fileNameInput = document.getElementById('fileName');
 
-    // Auth Listeners
-    auth.onAuthStateChanged(function(user) {
-      if (user) {
-        authContainer.style.display = 'none';
-        mainApp.style.display = 'block';
-        init();
-      } else {
-        authContainer.style.display = 'flex';
-        mainApp.style.display = 'none';
-      }
-    });
-
-    // Google Login
-    googleLoginBtn.addEventListener('click', function() {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(provider).catch(err => alert('Error: ' + err.message));
-    });
-
-    // Logout
-    logoutBtn.addEventListener('click', function() {
-      auth.signOut().catch(err => alert('Error: ' + err.message));
-    });
-
-    // Save to Cloud
     saveCloudBtn.addEventListener('click', function() {
       saveModal.classList.add('show');
       modalOverlay.classList.add('show');
@@ -212,65 +240,66 @@
       fileNameInput.value = '';
     });
 
-    confirmSaveBtn.addEventListener('click', async function() {
-      const fileName = fileNameInput.value.trim();
-      if (!fileName) { alert('Ingresa un nombre'); return; }
-      
-      const user = auth.currentUser;
-      const data = getModel();
-      const jsonStr = JSON.stringify(data, null, 2);
-      const timestamp = new Date().toLocaleString('es-ES');
-      
-      try {
-        await storage.ref(`registros/${user.uid}/${fileName}.json`).putString(jsonStr);
-        alert('Archivo guardado en la nube ✓');
-        saveModal.classList.remove('show');
-        modalOverlay.classList.remove('show');
-        fileNameInput.value = '';
-      } catch (err) {
-        alert('Error al guardar: ' + err.message);
-      }
-    });
-
-    // Load from Cloud
     loadCloudBtn.addEventListener('click', async function() {
-      const user = auth.currentUser;
       try {
+        const user = auth.currentUser;
+        if (!user) { alert('Debes iniciar sesión'); return; }
+        
         const files = await storage.ref(`registros/${user.uid}`).listAll();
         let listHTML = '<h3>Mis archivos guardados</h3><div style="max-height:400px; overflow-y:auto;">';
         
-        for (const item of files.items) {
-          const url = await item.getDownloadURL();
-          const name = item.name.replace('.json', '');
-          listHTML += `<div style="padding:8px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
-            <span>${name}</span>
-            <button onclick="loadFileFromCloud('${url}')" class="btn" style="padding:4px 8px; font-size:11px;">Cargar</button>
-          </div>`;
+        if (files.items.length === 0) {
+          listHTML += '<p style="color:#6b7280;">No hay archivos guardados</p>';
+        } else {
+          for (const item of files.items) {
+            const url = await item.getDownloadURL();
+            const name = item.name.replace('.json', '');
+            listHTML += `<div style="padding:8px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+              <span>${name}</span>
+              <button onclick="window.loadFileFromCloud('${url}')" class="btn" style="padding:4px 8px; font-size:11px;">Cargar</button>
+            </div>`;
+          }
         }
-        listHTML += '</div>';
+        listHTML += '</div><div style="margin-top:10px;"><button id="closeListBtn" class="btn" style="width:100%;">Cerrar</button></div>';
         
         saveModal.innerHTML = listHTML;
         saveModal.classList.add('show');
         modalOverlay.classList.add('show');
+        
+        document.getElementById('closeListBtn').addEventListener('click', function() {
+          saveModal.classList.remove('show');
+          modalOverlay.classList.remove('show');
+        });
       } catch (err) {
         alert('Error: ' + err.message);
       }
     });
 
-    window.loadFileFromCloud = async function(url) {
+    confirmSaveBtn.addEventListener('click', async function() {
+      const fileName = fileNameInput.value.trim();
+      if (!fileName) { alert('Ingresa un nombre'); return; }
+      
       try {
-        const response = await fetch(url);
-        const model = await response.json();
-        setModel(model);
+        const user = auth.currentUser;
+        if (!user) { alert('Debes iniciar sesión'); return; }
+        
+        const data = getModel();
+        const jsonStr = JSON.stringify(data, null, 2);
+        
+        // Guardar en Firebase Storage
+        const filePath = `registros/${user.uid}/${fileName}.json`;
+        await storage.ref(filePath).putString(jsonStr);
+        
+        alert('Archivo guardado en la nube ✓');
         saveModal.classList.remove('show');
         modalOverlay.classList.remove('show');
-        alert('Archivo cargado ✓');
+        fileNameInput.value = '';
       } catch (err) {
-        alert('Error al cargar: ' + err.message);
+        alert('Error: ' + err.message);
       }
-    };
+    });
 
-    // Core Functions (same as before)
+    // ====== CORE FUNCTIONS ======
     const select = document.getElementById('titleSelect');
     const titleDisplay = document.getElementById('titleDisplay');
     const sheet = document.getElementById('sheet');
@@ -316,10 +345,24 @@
 
     if(btnPrint) { btnPrint.addEventListener('click',function() { const oldTitle=document.title;const newTitle=suggestedFilename()||oldTitle;document.title=newTitle;window.print();setTimeout(function(){document.title=oldTitle;},1200); }); }
 
-    function getModel() { const sections=Array.from(document.querySelectorAll('#sectionsContainer>.sec')).map(sec=>({title:(sec.querySelector('.subtitle')?sec.querySelector('.subtitle').innerText:'').trim(),content:(sec.querySelector('textarea')?sec.querySelector('textarea').value:'')}));return{version:'v16',template:select.value,title:document.getElementById('titleDisplay').innerText.trim(),medico:document.getElementById('medico').value||'',especialidad:document.getElementById('esp').value||'',sections}; }
+    function getModel() { const sections=Array.from(document.querySelectorAll('#sectionsContainer>.sec')).map(sec=>({title:(sec.querySelector('.subtitle')?sec.querySelector('.subtitle').innerText:'').trim(),content:(sec.querySelector('textarea')?sec.querySelector('textarea').value:'')}));return{version:'v17',template:select.value,title:document.getElementById('titleDisplay').innerText.trim(),medico:document.getElementById('medico').value||'',especialidad:document.getElementById('esp').value||'',sections}; }
     function setModel(model) { if(model.template){select.value=String(model.template);setTitleFromSelect();}if(typeof model.title==='string')document.getElementById('titleDisplay').innerText=model.title;if(Array.isArray(model.sections)){container.innerHTML='';model.sections.forEach(s=>{const sec=document.createElement('div');sec.className='sec';sec.setAttribute('data-section','');sec.innerHTML=`<button class="sec-del">×</button><div class="subtitle" contenteditable="true">${s.title||''}</div><textarea class="txt">${(s.content||'').replace(/</g,'&lt;')}</textarea>`;container.appendChild(sec);});bindDeleteButtons(container);}document.getElementById('medico').value=model.medico||'';document.getElementById('esp').value=model.especialidad||''; }
 
     function init() { restoreClinicalSections();setTitleFromSelect();bindDeleteButtons();updateAgeFromInputs(); }
+
+    // Load from cloud
+    window.loadFileFromCloud = async function(url) {
+      try {
+        const response = await fetch(url);
+        const model = await response.json();
+        setModel(model);
+        saveModal.classList.remove('show');
+        modalOverlay.classList.remove('show');
+        alert('Archivo cargado ✓');
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    };
   </script>
 </body>
 </html>
